@@ -37,7 +37,6 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
 .ts{background:var(--panel);border:1px solid var(--b1);border-radius:8px;
   padding:5px 12px;text-align:center;min-width:54px}
 .ts-v{font-size:.95rem;font-weight:700;font-family:var(--mono);line-height:1}
-.ts-l{font-size:.52rem;color:var(--mt);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
 .ts-v.a{color:var(--acl)}.ts-v.u{color:var(--up2)}.ts-v.d{color:var(--dn2)}
 
 /* BODY */
@@ -330,30 +329,52 @@ function toast(type, msg, ms) {
 }
 
 // ══════════════════════════════
-// FETCH — API pública de ML
-// Requiere HTTPS (GitHub Pages)
+// FETCH — API con Proxy para evitar 403 (CORS)
+// Usamos api.allorigins.win para saltar el PolicyAgent de ML
 // ══════════════════════════════
 async function fetchML(rawId) {
   var id = rawId.replace(/^(ML[A-Z]+)-?(\d+)$/i,'$1$2').toUpperCase();
-  var url = 'https://api.mercadolibre.com/items/' + id;
+  var targetUrl = 'https://api.mercadolibre.com/items/' + id;
+  
+  // Encapsulamos la petición en el proxy
+  var proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(targetUrl);
 
-  var resp = await fetch(url);
-  if (!resp.ok) throw new Error('ML respondió ' + resp.status + ' — verificá el código MLA');
+  var resp = await fetch(proxyUrl);
+  if (!resp.ok) throw new Error('Error de conexión con el Proxy (' + resp.status + ')');
 
-  var d = await resp.json();
-  if (d.error) throw new Error('ML: ' + (d.message || d.error));
-  if (!d.title) throw new Error('Respuesta inválida');
+  var proxyData = await resp.json();
+  
+  // Los datos de ML vienen en la propiedad 'contents' como texto
+  var d;
+  try {
+    d = JSON.parse(proxyData.contents);
+  } catch(e) {
+    throw new Error('No se pudo procesar la respuesta de Mercado Libre');
+  }
+
+  if (d.error) {
+    if(d.status === 403) throw new Error('Acceso denegado (403). ML bloqueó la petición.');
+    throw new Error('ML: ' + (d.message || d.error));
+  }
+  
+  if (!d.title) throw new Error('Publicación no encontrada');
 
   var thumb = d.thumbnail || '';
   if (d.pictures && d.pictures[0]) thumb = d.pictures[0].secure_url || d.pictures[0].url || thumb;
   thumb = thumb.replace(/-[A-Z]\.(jpg|webp|png)/i, '-O.$1');
 
-  return { title:d.title, price:d.price, currency:d.currency_id||'ARS',
-    thumbnail:thumb, condition:d.condition||'', stock:d.available_quantity??0 };
+  return { 
+    title:d.title, 
+    price:d.price, 
+    currency:d.currency_id||'ARS',
+    thumbnail:thumb, 
+    condition:d.condition||'', 
+    stock:d.available_quantity??0 
+  };
 }
 
 // ══════════════════════════════
-// RENDER
+// RENDER (Sin cambios, solo usa el nuevo fetchML)
 // ══════════════════════════════
 function draw(id) {
   var s=G.m[id], el=document.getElementById('c'+id);
@@ -576,8 +597,8 @@ function updStats(){
   document.getElementById('tsD').textContent=all.filter(function(s){return s.st==='dn';}).length;
 }
 
-// AUTO-CARGAR
-window.addEventListener('DOMContentLoaded', function(){ add('MLA1147546699'); });
+// AUTO-CARGAR (Puedes cambiar este MLA por uno que quieras probar por defecto)
+window.addEventListener('DOMContentLoaded', function(){ add('MLA1101377918'); });
 </script>
 </body>
 </html>
